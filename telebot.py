@@ -14,12 +14,16 @@ logger = logging.getLogger(__name__)
 
 user_session = {}
 
+def removeUserFromSession(userid):
+  if (userid) in user_session:
+    del user_session[userid]
+
 TELEBOT_API_TOKEN = "SECRET"
 
 def __start(update, context):
     bot = telegram.Bot(token=TELEBOT_API_TOKEN)
     userid = update.message.chat.id
-    del user_session[userid]
+    removeUserFromSession(userid)
     bot.send_message(chat_id=userid, text=getGenericWelcomeMessage(), parse_mode= 'Markdown')
 
 def __add(update, context):
@@ -28,15 +32,21 @@ def __add(update, context):
     user_session[userid] = SessionState.ADD
     bot.send_message(chat_id=userid, text=input_processor.getSlotQueryMessage(), parse_mode= 'Markdown')
 
+def __check(update, context):
+  bot = telegram.Bot(token=TELEBOT_API_TOKEN)
+  userid = update.message.chat.id
+  user_session[userid] = SessionState.CHECK
+  bot.send_message(chat_id=userid, text=input_processor.getSlotQueryMessage(), parse_mode= 'Markdown')
+
 def __tracking(update, context):
     userid = update.message.chat.id
-    del user_session[userid]
+    removeUserFromSession(userid)
     output = user_slot_tracker.getTrackingOutputByUserid(userid)
     update.message.reply_text(output)
 
 def __clear(update, context):
     userid = update.message.chat.id
-    del user_session[userid]
+    removeUserFromSession(userid)
     user_slot_tracker.clearUser(userid)
     update.message.reply_text("Removed!")
 
@@ -56,8 +66,9 @@ def __echo(update, context):
       update.message.reply_text(getGenericWelcomeMessage(), parse_mode= 'Markdown')
       return
 
-    if (user_session[userid] == SessionState.ADD):
-      del user_session[userid]
+    if (user_session[userid] == SessionState.ADD or user_session[userid] == SessionState.CHECK):
+      temp = user_session[userid]
+      removeUserFromSession(userid)
       try:
         result = input_processor.processInput(update.message.text)
         dateindex = result[0]
@@ -65,16 +76,20 @@ def __echo(update, context):
   
         selectedDate = slot_database.getSlotDateList()[dateindex]
         selectedTime = slot_database.getTimeSlotsList()[timeslotIndex]
-  
-        user_slot_tracker.addUserSlot(selectedTime, selectedDate, update.message.chat.id)
-        update.message.reply_text(f"Successfully added your tracking request for ({selectedDate} {selectedTime})")
+        if (temp == SessionState.ADD):
+          user_slot_tracker.addUserSlot(selectedTime, selectedDate, update.message.chat.id)
+          update.message.reply_text(f"Successfully added your tracking request for ({selectedDate} {selectedTime})")
+        elif (temp == SessionState.CHECK):
+          slotAvailable = slot_database.hasAvailableSlot(selectedTime, selectedDate)
+          
+          update.message.reply_text(f"There is currently {slot_database.checkNumberOfAvailableSlot(selectedTime, selectedDate)} slots available" if slotAvailable else "There are no slots available")
         return
       except Exception as e:
         update.message.reply_text("Sorry I cannot interprete what you just told me, can you please read the instruction and input properly? If you don't know what to do, please input /start command first, thanks.")
         return
 
     if (user_session[userid] == SessionState.REMOVE):
-      del user_session[userid]
+      removeUserFromSession(userid)
       try:
         target = user_slot_tracker.user_tracking_slots[userid]
         userInput = int(update.message.text) - 1
@@ -109,6 +124,7 @@ def getGenericWelcomeMessage():
   /tracking - See all the slots that you are currently tracking
   /remove - Remove a slot from tracking list
   /clear - Clear all items from the tracking list
+  /check - Check whether a slot is currently available for booking
   """
 
 def startTeleBot():
@@ -121,6 +137,7 @@ def startTeleBot():
     dp.add_handler(CommandHandler("tracking", __tracking))
     dp.add_handler(CommandHandler("remove", __remove))
     dp.add_handler(CommandHandler("clear", __clear))
+    dp.add_handler(CommandHandler("check", __check))
 
     # on noncommand i.e message - echo the message on Telegram
     dp.add_handler(MessageHandler(Filters.text, __echo))

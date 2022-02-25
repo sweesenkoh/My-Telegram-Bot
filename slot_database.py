@@ -29,3 +29,8 @@ def hasAvailableSlot(timeslot, dateslot):
     return "Avail" in slots
   except:
     return False
+
+def checkNumberOfAvailableSlot(timeslot, dateslot):
+  slots = data[data["Session (hrs)"] == timeslot][dateslot].to_list()
+  filtered = list(filter(lambda slot: "Avail" == slot, slots))
+  return len(filtered)
