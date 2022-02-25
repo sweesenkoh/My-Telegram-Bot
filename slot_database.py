@@ -24,5 +24,8 @@ def getSlotDateList():
   return list(filter(lambda column: "202" in column, data.columns))
   
 def hasAvailableSlot(timeslot, dateslot):
-  slots = data[data["Session (hrs)"] == timeslot][dateslot].to_list()
-  return "Avail" in slots
+  try:
+    slots = data[data["Session (hrs)"] == timeslot][dateslot].to_list()
+    return "Avail" in slots
+  except:
+    return False
